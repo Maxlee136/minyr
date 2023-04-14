@@ -1,69 +1,198 @@
-package yr_test
+package yr
 
 import (
 	"bufio"
-	"fmt"
+	"encoding/csv"
+	"io"
 	"os"
 	"strings"
+	"testing"
 )
 
-// Testfunksjonen tar inn en filbane og utfører testene som er beskrevet i oppgaven.
-func Testfunksjonen(filbane string) {
-	// Åpne filen for lesing.
-	fil, err := os.Open(filbane)
+// antall linjer i filen er 16756
+func TestFileLineCount(t *testing.T) {
+	filename := ("kjevik-temp-celsius-20220318-20230318.csv")
+	expectedLines := 16756
+
+	file, err := os.Open(filename)
 	if err != nil {
-		fmt.Println("Kunne ikke åpne filen:", err)
-		return
+		t.Fatalf("Feilet å åpne fil %s: %v", filename, err)
 	}
-	defer fil.Close()
+	defer file.Close()
 
-	// Les filen linje for linje og utfør testene.
-	scanner := bufio.NewScanner(fil)
+	scanner := bufio.NewScanner(file)
+	lineCount := 0
 	for scanner.Scan() {
-		linje := scanner.Text()
-		deler := strings.Split(linje, ";")
+		lineCount++
+	}
+	if err := scanner.Err(); err != nil {
+		t.Fatalf("Feilet å skanne fil %s: %v", filename, err)
+	}
 
-		switch len(deler) {
-		case 4:
-			// Test 1: Antall linjer i filen er 16756.
-			// Bruk en teller for å telle antall linjer i filen.
-			// Her antar vi at hver linje er en værmåling.
-			// Du kan endre dette hvis linjene i filen har en annen struktur.
-			teller++
-		case 5:
-			// Test 2-4: Sjekk om de ønskede verdiene stemmer overens med forventede verdier.
-			if deler[3] == "6" {
-				if deler[4] != "42,8" {
-					fmt.Println("Test feilet: ", linje)
-				}
-			} else if deler[3] == "0" {
-				if deler[4] != "32" {
-					fmt.Println("Test feilet: ", linje)
-				}
-			} else if deler[3] == "-11" {
-				if deler[4] != "12,2" {
-					fmt.Println("Test feilet: ", linje)
-				}
+	if lineCount != expectedLines {
+		t.Errorf("uforusett linje antall i fil %s: forventet %d, fikk %d", filename, expectedLines, lineCount)
+	}
+}
+
+// gitt "Kjevik;SN39040;18.03.2022 01:50;6" ønsker å få (want) "Kjevik;SN39040;18.03.2022 01:50;42,8"
+func TestConversion8(t *testing.T) {
+	// åpnee csv filen
+	file, err := os.Open("kjevik-temp-fahr-20220318-20230318.csv")
+	if err != nil {
+		t.Errorf("Feilet å åpne fil: %v", err)
+	}
+	defer file.Close()
+
+	// Lager en ny csv lesere for å lese csv filen
+	reader := csv.NewReader(file)
+
+	// Loop gjennom hver linje i csv filen
+	for {
+		// Leser en linje fra csv filen
+		line, err := reader.Read()
+		if err != nil {
+			if err == io.EOF {
+				break
+			} else {
+				t.Errorf("Feilet å lese filen: %v", err)
+				return
 			}
-		case 1:
-			// Test 5: Endre teksten i linjen og legg til studentens navn.
-			if strings.Contains(linje, "Data er gyldig per") && strings.Contains(linje, "Meteorologisk institutt (MET)") {
-				nyLinje := strings.Replace(linje, "Data er gyldig per", "Data er basert på gyldig data (per "+dato+")", 1)
-				nyLinje += "endringen er gjort av STUDENTENS_NAVN"
-				fmt.Println(nyLinje)
+		}
+
+		// Sjekker om linjen matcher den spesifiserte linjen
+		if line[0] == "Kjevik" && line[1] == "SN39040" && line[2] == "18.03.2022 01:50" {
+			// Sjekker om temperaturen er riktig konvertert
+			want := "42.8"
+			got := line[3]
+			if got != want {
+				t.Errorf("Konvertering feil. Fikk %v, forventer %v", got, want)
 			}
+			return
+		}
+	}
+	t.Errorf("Linje ikke funnet.")
+}
+
+// gitt "Kjevik;SN39040;07.03.2023 18:20;0" ønsker å få (want) "Kjevik;SN39040;07.03.2023 18:20;32"
+func TestConversion32(t *testing.T) {
+	file, err := os.Open("kjevik-temp-fahr-20220318-20230318.csv")
+	if err != nil {
+		t.Errorf("Feilet å åpne fil: %v", err)
+	}
+	defer file.Close()
+
+	reader := csv.NewReader(file)
+
+	for {
+		line, err := reader.Read()
+		if err != nil {
+			if err == io.EOF {
+				break
+			} else {
+				t.Errorf("Feilet å lese filen: %v", err)
+				return
+			}
+		}
+
+		if line[0] == "Kjevik" && line[1] == "SN39040" && line[2] == "07.03.2023 18:20" {
+			want := "32.0"
+			got := line[3]
+			if got != want {
+				t.Errorf("Konvertering feilet. Fikk %v, forventer %v", got, want)
+			}
+			return
 		}
 	}
 
-	// Test 6: Gjennomsnittstemperatur for august 2022 i grader Celsius.
-	// Du kan bruke samme teller som i Test 1 for å telle antall målinger for august 2022.
-	// Deretter kan du bruke en variabel for å holde summen av temperaturene.
-	// Når du har summen og antall målinger, kan du regne ut gjennomsnittet.
-	// Husk å sjekke at antall målinger er større enn null før du deler på det.
+	t.Errorf("Linje ikke funnet i filen.")
 }
 
-func main() {
-	filbane := "værdata.txt"
+// gitt "Kjevik;SN39040;08.03.2023 02:20;-11" ønsker å få (want) "Kjevik;SN39040;08.03.2023 02:20;12.2"
+func TestConversion2(t *testing.T) {
+	file, err := os.Open("kjevik-temp-fahr-20220318-20230318.csv")
+	if err != nil {
+		t.Errorf("Feilet å åpne fil: %v", err)
+	}
+	defer file.Close()
 
-	Testfunksjonen(filbane)
+	reader := csv.NewReader(file)
+
+	for {
+		line, err := reader.Read()
+		if err != nil {
+			if err == io.EOF {
+				break
+			} else {
+				t.Errorf("Feilet å lese filen: %v", err)
+				return
+			}
+		}
+
+		if line[0] == "Kjevik" && line[1] == "SN39040" && line[2] == "08.03.2023 02:20" {
+			want := "12.2"
+			got := line[3]
+			if got != want {
+				t.Errorf("Konvertering feilet. Fikk %v, forventer %v", got, want)
+			}
+			return
+		}
+	}
+
+	t.Errorf("Linje ikke funnet i filen.")
+}
+
+/*
+gitt "Data er gyldig per 18.03.2023 (CC BY 4.0), Meteorologisk institutt (MET);;;" ønsker å få (want)
+"Data er basert på gyldig data (per 18.03.2023) (CC BY 4.0) fra Meteorologisk institutt (MET);endringen er gjort av
+STUDENTENS_NAVN", hvor STUDENTENS_NAVN er navn på studenten som leverer besvarelsen
+*/
+func TestLastLineOfFile(t *testing.T) {
+	file, err := os.Open("kjevik-temp-fahr-20220318-20230318.csv")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+
+	// Skanner gjennom filen linje for linje, og holder styr på den siste linjen som ble lest
+	var lastLine string
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		lastLine = scanner.Text()
+	}
+	if err := scanner.Err(); err != nil {
+		t.Fatal(err)
+	}
+
+	// her ser vi om den siste linjen inneholder den forventede teksten
+	expectedText := "Data er basert paa gyldig data (per 18.03.2023) (CC BY 4.0) fra Meteorologisk institutt (MET); endringen er gjort av Max lee	"
+	if !strings.Contains(lastLine, expectedText) {
+		t.Errorf("Siste linje i filen matcher ikke forventet resultat. fikk: %q, forventet tekst: %q", lastLine, expectedText)
+	}
+}
+
+func TestAverageCelsius(t *testing.T) {
+	expected := 8.55897099200191
+
+	// Endrer arbeidskatalogen til katalogen der CSV-filen befinner seg
+	err := os.Chdir("..")
+	if err != nil {
+		t.Fatalf("Feil: %v", err)
+	}
+
+	// Endrer arbeidskatalogen tilbake til katalogen der testfilen befinner seg når testen er ferdig
+	defer func() {
+		err = os.Chdir("yr")
+		if err != nil {
+			t.Fatalf("Feil: %v", err)
+		}
+	}()
+
+	avg, err := Average("c")
+	if err != nil {
+		t.Fatalf("Feil: %v", err)
+	}
+
+	if avg != expected {
+		t.Fatalf("Gjennomsnittet er %v, men forventet %v", avg, expected)
+	}
 }
